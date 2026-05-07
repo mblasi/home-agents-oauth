@@ -190,7 +190,12 @@ def callback(
     if not wa_ok:
         logger.warning("[%s] no se pudo enviar WA, token disponible por GET /tokens/%s", service, short_code)
 
-    return _html_success(label, user_id, agent_id, wa_ok)
+    return _html_success(
+        label, user_id, agent_id, wa_ok,
+        short_code=short_code,
+        access_token=token_data.get("access_token", ""),
+        refresh_token=token_data.get("refresh_token", ""),
+    )
 
 
 @app.get("/tokens/{short_code}")
@@ -266,12 +271,79 @@ def _send_wa(service: str, short_code: str) -> bool:
         return False
 
 
-def _html_success(label: str, user_id: str, agent_id: str, wa_ok: bool) -> HTMLResponse:
+def _html_success(
+    label: str,
+    user_id: str,
+    agent_id: str,
+    wa_ok: bool,
+    short_code: str = "",
+    access_token: str = "",
+    refresh_token: str = "",
+) -> HTMLResponse:
     wa_msg = (
         "El bot recibirá el token automáticamente en unos segundos."
         if wa_ok else
-        "No se pudo notificar al bot automáticamente. Revisá los logs de Cloud Run."
+        "No se pudo notificar al bot automáticamente. Usá el <strong>short_code</strong> de abajo en Backoffice → Agente → Recuperar por short_code."
     )
+    wa_color = "#34d399" if wa_ok else "#f59e0b"
+
+    def _copy_row(label_t: str, value: str, color: str = "#a5b4fc") -> str:
+        if not value:
+            return ""
+        return f"""
+      <div style="margin-top:.75rem;text-align:left">
+        <div style="color:#6b7280;font-size:.7rem;margin-bottom:.25rem">{label_t}</div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input id="inp-{label_t}" readonly value="{value}"
+                 style="flex:1;background:#0d0d0d;border:1px solid #333;border-radius:.375rem;
+                        padding:.3rem .5rem;font-family:monospace;font-size:.7rem;color:{color};
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          <button onclick="navigator.clipboard.writeText('{value}').then(()=>{{
+              var b=this; b.textContent='✓'; setTimeout(()=>b.textContent='Copiar',1500);}})"
+                  style="background:#1e1b4b;color:#a5b4fc;border:1px solid #3730a3;border-radius:.375rem;
+                         padding:.25rem .6rem;font-size:.7rem;cursor:pointer;white-space:nowrap">
+            Copiar
+          </button>
+        </div>
+      </div>"""
+
+    fallback_section = ""
+    if not wa_ok and short_code:
+        fallback_section = f"""
+    <div style="margin-top:1.25rem;background:#1a1200;border:1px solid #78350f;border-radius:.5rem;padding:1rem;text-align:left">
+      <div style="color:#fbbf24;font-size:.8rem;font-weight:600;margin-bottom:.5rem">Recuperación manual</div>
+      {_copy_row("short_code", short_code, "#fde68a")}
+      <p style="color:#6b7280;font-size:.7rem;margin-top:.75rem">
+        Expira en 5 minutos. Pegalo en Backoffice → Agente → Recuperar por short_code.
+      </p>
+    </div>
+    <details style="margin-top:.75rem;text-align:left">
+      <summary style="cursor:pointer;color:#6b7280;font-size:.75rem;list-style:none">
+        ▸ Tokens completos (alternativa)
+      </summary>
+      <div style="background:#0d0d0d;border:1px solid #222;border-radius:.5rem;padding:.75rem;margin-top:.5rem">
+        {_copy_row("access_token", access_token)}
+        {_copy_row("refresh_token", refresh_token)}
+        <p style="color:#6b7280;font-size:.7rem;margin-top:.75rem">
+          Pegá estos valores en Backoffice → Agente → Configurar manualmente.
+        </p>
+      </div>
+    </details>"""
+    elif access_token:
+        fallback_section = f"""
+    <details style="margin-top:1.25rem;text-align:left">
+      <summary style="cursor:pointer;color:#9ca3af;font-size:.8rem;list-style:none">
+        ▸ Tokens (para configuración manual)
+      </summary>
+      <div style="background:#0d0d0d;border:1px solid #222;border-radius:.5rem;padding:.75rem;margin-top:.5rem">
+        {_copy_row("access_token", access_token)}
+        {_copy_row("refresh_token", refresh_token)}
+        <p style="color:#6b7280;font-size:.7rem;margin-top:.75rem">
+          Pegá estos valores en Backoffice → Agente → Backend OAuth2 → Configurar manualmente.
+        </p>
+      </div>
+    </details>"""
+
     body = f"""<!doctype html>
 <html lang="es">
 <head><meta charset="utf-8"><title>Conectado — {label}</title>
@@ -279,17 +351,19 @@ def _html_success(label: str, user_id: str, agent_id: str, wa_ok: bool) -> HTMLR
 <style>
   body{{font-family:system-ui,sans-serif;background:#0a0a0a;color:#e5e7eb;
        display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
-  .card{{background:#111;border:1px solid #222;border-radius:1rem;padding:2rem;max-width:400px;text-align:center}}
-  h1{{color:#34d399;font-size:1.5rem;margin-bottom:.5rem}}
+  .card{{background:#111;border:1px solid #222;border-radius:1rem;padding:2rem;max-width:480px;width:100%}}
+  h1{{color:#34d399;font-size:1.5rem;margin-bottom:.5rem;text-align:center}}
   p{{color:#9ca3af;font-size:.9rem;line-height:1.5}}
   .chip{{display:inline-block;background:#1a2a1a;color:#6ee7b7;font-size:.75rem;
-         padding:.2rem .6rem;border-radius:.25rem;margin-top.5rem}}
+         padding:.2rem .6rem;border-radius:.25rem}}
+  details summary::-webkit-details-marker{{display:none}}
 </style></head>
 <body><div class="card">
   <h1>✓ {label} conectado</h1>
-  <p>Usuario: <span class="chip">{user_id}</span></p>
-  <p style="margin-top:1rem">{wa_msg}</p>
-  <p style="margin-top:1.5rem;color:#6b7280;font-size:.8rem">Podés cerrar esta pestaña.</p>
+  <p style="text-align:center">Usuario: <span class="chip">{user_id}</span></p>
+  <p style="margin-top:1rem;color:{wa_color};font-size:.85rem">{wa_msg}</p>
+  {fallback_section}
+  <p style="margin-top:1.5rem;color:#6b7280;font-size:.8rem;text-align:center">Podés cerrar esta pestaña.</p>
 </div></body></html>"""
     return HTMLResponse(body)
 

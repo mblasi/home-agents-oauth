@@ -1,5 +1,5 @@
 """
-OAuth2 Cloud Run app para MercadoLibre y MercadoPago.
+OAuth2 Cloud Run app para MercadoLibre.
 
 Flujo:
   1. Backoffice redirige a GET /auth/{service}/login?user_id=X&agent_id=Y
@@ -44,15 +44,6 @@ _SERVICES: dict[str, dict[str, str]] = {
         "client_secret": os.environ.get("ML_CLIENT_SECRET", ""),
         "redirect_uri": os.environ.get("ML_REDIRECT_URI", ""),
         "label":        "MercadoLibre",
-    },
-    "mp": {
-        "auth_url":     "https://auth.mercadopago.com.uy/authorization",
-        "token_url":    "https://api.mercadopago.com/oauth/token",
-        "me_url":       "https://api.mercadopago.com/users/me",
-        "client_id":    os.environ.get("MP_CLIENT_ID", ""),
-        "client_secret": os.environ.get("MP_CLIENT_SECRET", ""),
-        "redirect_uri": os.environ.get("MP_REDIRECT_URI", ""),
-        "label":        "MercadoPago",
     },
 }
 
@@ -129,15 +120,6 @@ def callback_ml(
     error: str = Query(default=""),
 ) -> HTMLResponse:
     return callback("ml", code, state, error)
-
-
-@app.get("/mp/oauth2")
-def callback_mp(
-    code:  str = Query(default=""),
-    state: str = Query(default=""),
-    error: str = Query(default=""),
-) -> HTMLResponse:
-    return callback("mp", code, state, error)
 
 
 @app.get("/auth/{service}/callback")
